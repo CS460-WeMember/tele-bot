@@ -212,13 +212,22 @@ client.collection("adhoc").subscribe("*", function (e) {
     console.log(lastUpdated);
   }
   funky();
+  cron.schedule('55 15 20 3 *', () => {
+    console.log("runnnninginigninng");
+    if (userChatId != "") {
+      bot.sendMessage(userChatId, e.record.title);
+    }
+  });
 });
 
 client.collection("regular").subscribe("*", function (e) {
   console.log(e.record);
   updateReminderLists();
   //make cron thing based on time
-  cron.schedule('55 15 20 3 *', () => {
+  const scheduleDay = e.record.day;
+  const scheduleHour = e.record.hour;
+  const scheduleMinute = e.record.minute;
+  cron.schedule(`${scheduleMinute} ${scheduleHour} * * ${scheduleDay}`, () => {
     console.log("runnnninginigninng");
     if (userChatId != "") {
       bot.sendMessage(userChatId, e.record.title);
