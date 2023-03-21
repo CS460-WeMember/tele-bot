@@ -1,13 +1,19 @@
+//import got from 'got';
 const services = require("./services");
 const FormData = require("form-data");
 var download = require("download-file");
 const LocalFileData = require("get-file-object-from-local-path");
 global.EventSource = require("eventsource");
-const date = require('date-and-time');
-var cron = require('node-cron');
+const date = require("date-and-time");
+var cron = require("node-cron");
+const got = require("got");
+var FileReader = require("filereader");
+fileReader = new FileReader();
 
-var lastUpdated = date.format(date.addHours(new Date(), -8),'YYYY-MM-DD HH:mm:ss.SSS');
-
+var lastUpdated = date.format(
+  date.addHours(new Date(), -8),
+  "YYYY-MM-DD HH:mm:ss.SSS"
+);
 
 //-----------------------------------------
 // async function test1 () {
@@ -27,13 +33,13 @@ const telegramBot = require(`node-telegram-bot-api`);
 const axios = require("axios");
 require(`dotenv`).config();
 
-const TOKEN = process.env.TOKEN;
+const TOKEN = "6141320163:AAFQyt5yj0J9tpSTp6l8NjvyBsJNqz2NnQ4";
 
 const client = new PocketBase("http://129.150.56.59:8090");
 const url = "http://129.150.56.59:8090";
 const bot = new telegramBot(TOKEN, { polling: true });
 var caregiverChatId = "";
-var userChatId = "";
+var userChatId = "122986982";
 
 var roleFlag = 1;
 var frequencyFlag = 1;
@@ -45,13 +51,16 @@ var confirmationFlag = 1;
 var settingsFlag = 1;
 var toothbrushFlag = 1;
 
-function resetFlags() {
+function resetReminderFlags() {
   frequencyFlag = 1;
   soundLevelFlag = 1;
   lightColourFlag = 1;
   lightBrightnessFlag = 1;
   deviceFlag = 1;
   confirmationFlag = 1;
+}
+
+function resetSettingsFlags() {
   settingsFlag = 1;
   toothbrushFlag = 1;
 }
@@ -63,6 +72,7 @@ const options = {
   confirmation: "no",
 };
 
+const formDataReminder = new FormData();
 const reminder = {
   title: "temp title",
   when: "2023-01-23 10:00:00",
@@ -75,7 +85,6 @@ const reminder2 = {
   title: "temp title",
   when: "2022-01-01 10:00:00",
 };
-
 
 //keyboard buttons
 const standardOpts = {
@@ -195,40 +204,57 @@ async function updateReminderLists() {
 updateReminderLists();
 
 client.collection("adhoc").subscribe("*", function (e) {
-  console.log(e.record);
-  async function funky()  {
-    await updateReminderLists();
-    //const tempDate = date.addHours(lastUpdated, -8);
-    //const temp = date.format(tempDate,'YYYY-MM-DD HH:mm:ss.SSS');
-    console.log(lastUpdated);
-    for (var i = 0; i < adhocReminderList.data.items.length; i++) {
-      var item = adhocReminderList.data.items[i];
-      if (lastUpdated.localeCompare(item.created) != 1) {
-        //schedule message
-        console.log("heehee");
+  //console.log(e.record);
+  // async function funky() {
+  //   await updateReminderLists();
+  //   //const tempDate = date.addHours(lastUpdated, -8);
+  //   //const temp = date.format(tempDate,'YYYY-MM-DD HH:mm:ss.SSS');
+  //   console.log(lastUpdated);
+  //   for (var i = 0; i < adhocReminderList.data.items.length; i++) {
+  //     var item = adhocReminderList.data.items[i];
+  //     if (lastUpdated.localeCompare(item.created) != 1) {
+  //       //schedule message
+  //       console.log("heehee");
+  //     }
+  //   }
+  //   lastUpdated = date.format(
+  //     date.addHours(new Date(), -8),
+  //     "YYYY-MM-DD HH:mm:ss.SSS"
+  //   );
+  //   console.log(lastUpdated);
+  // }
+  // funky();
+  const newDate = new Date(e.record.when);
+  const scheduleHour = newDate.getHours();
+  const scheduleMinute = newDate.getMinutes();
+  const scheduleDate = newDate.getDate();
+  const scheduleMonth = newDate.getMonth() + 1;
+  console.log(
+    `${scheduleMinute} ${scheduleHour} ${scheduleDate} ${scheduleMonth} *`
+  );
+  cron.schedule(
+    `${scheduleMinute} ${scheduleHour} ${scheduleDate} ${scheduleMonth} *`,
+    () => {
+      console.log("scheduled reminder:" + e.record.title);
+      if (userChatId != "") {
+        bot.sendMessage(userChatId, e.record.title);
       }
     }
-    lastUpdated = date.format(date.addHours(new Date(), -8),'YYYY-MM-DD HH:mm:ss.SSS');
-    console.log(lastUpdated);
-  }
-  funky();
-  cron.schedule('55 15 20 3 *', () => {
-    console.log("runnnninginigninng");
-    if (userChatId != "") {
-      bot.sendMessage(userChatId, e.record.title);
-    }
-  });
+  );
 });
 
 client.collection("regular").subscribe("*", function (e) {
   console.log(e.record);
   updateReminderLists();
   //make cron thing based on time
-  const scheduleDay = e.record.day;
+  var scheduleDay = e.record.day;
+  if (scheduleDay == -1) {
+    scheduleDay = "*";
+  }
   const scheduleHour = e.record.hour;
   const scheduleMinute = e.record.minute;
   cron.schedule(`${scheduleMinute} ${scheduleHour} * * ${scheduleDay}`, () => {
-    console.log("runnnninginigninng");
+    console.log("scheduled reminder:" + e.record.title);
     if (userChatId != "") {
       bot.sendMessage(userChatId, e.record.title);
     }
@@ -251,14 +277,14 @@ bot.onText(/^\/start$/, function (msg) {
       }
     }
     roleFlag = 0;
-  })
+  });
 });
 
 bot.on(`message`, (message) => {
   console.log(message);
   if (message.text == "Set A New Reminder") {
     (async () => {
-      resetFlags();
+      resetReminderFlags();
       const titlePrompt = await bot.sendMessage(
         message.chat.id,
         "Enter the title of your Reminder",
@@ -272,6 +298,7 @@ bot.on(`message`, (message) => {
         caregiverChatId,
         titlePrompt.message_id,
         async (titleMsg) => {
+          formDataReminder.append("title", titleMsg.text);
           reminder.title = titleMsg.text;
           const timePrompt = await bot.sendMessage(
             caregiverChatId,
@@ -310,8 +337,8 @@ bot.on(`message`, (message) => {
                     photoPrompt.message_id,
                     async (photoMsg) => {
                       //reminder.photo = photoMsg.text;
-                      //console.log(photoMsg);
-                      const photoId = photoMsg.photo[0].file_id;
+                      console.log(photoMsg);
+                      const photoId = photoMsg.photo[2].file_id;
                       console.log(photoId);
                       const res = await axios.get(
                         `https://api.telegram.org/bot6141320163:AAFQyt5yj0J9tpSTp6l8NjvyBsJNqz2NnQ4/getFile?file_id=${photoId}`
@@ -320,18 +347,50 @@ bot.on(`message`, (message) => {
                       const filePath = res.data.result.file_path;
                       console.log(filePath);
                       const downloadURL = `https://api.telegram.org/file/bot${TOKEN}/${filePath}`;
+                      console.log("====================================");
+                      console.log(downloadURL);
+                      console.log("====================================");
 
                       //const image = fs.createReadStream(downloadURL);
                       //console.log(image);
                       //formDataAdhoc.append("audio", image);
-                      const file = await fetch(downloadURL).then((res) =>
-                        res.blob()
+                      const file = await fetch(downloadURL);
+                      const fileData = await file.blob();
+                      //console.log(typeof file);
+                      console.log("====================================");
+                      console.log(
+                        Buffer.from(await fileData.arrayBuffer()).toString(
+                          "base64"
+                        )
                       );
-                      //formDataAdhoc.append("picture", file, "filename.jpg");
+                      var b64string = Buffer.from(
+                        await fileData.arrayBuffer()
+                      ).toString("base64");
+                      console.log("====================================");
+                      //console.log(got.stream(downloadURL));
+                      //formData.append("device", got.stream(downloadURL));
+                      formDataReminder.append("picture2", b64string);
+                      var buf = Buffer.from(b64string, "base64");
+                      //formData.append("picture", file.value);
+                      bot.sendPhoto(
+                        caregiverChatId,
+                        Buffer.from(await fileData.arrayBuffer()),
+                        {
+                          caption: "Reminder Complete!",
+                        }
+                      );
+
+                      // const file = await fetch(downloadURL).then((res) =>
+                      //   res.blob()
+                      // );
                       // formDataAdhoc.append(
                       //   "picture",
                       //   Buffer.from(await file.arrayBuffer())
                       // );
+
+                      // const formData = new FormData();
+                      //formData.append("picture", file);
+
                       //=-----------------------------------------------------------------
 
                       //const urlToObject= async()=> {
@@ -363,6 +422,34 @@ bot.on(`message`, (message) => {
                         audioPrompt.message_id,
                         async (audioMsg) => {
                           //process audio stuff
+                          console.log(audioMsg);
+                          const audioId = audioMsg.audio.file_id;
+                          const res = await axios.get(
+                             `https://api.telegram.org/bot${TOKEN}/getFile?file_id=${audioId}`
+                           );
+                          // extract the file path
+                          const filePath = res.data.result.file_path;
+                          console.log(filePath);
+                          const downloadURL = `https://api.telegram.org/file/bot${TOKEN}/${filePath}`;
+                          console.log("====================================");
+                          console.log(downloadURL);
+                          console.log("====================================");
+                          const file = await fetch(downloadURL);
+                          const fileData = await file.blob();
+
+                          console.log("====================================");
+                          console.log(
+                            Buffer.from(await fileData.arrayBuffer()).toString(
+                              "base64"
+                            )
+                          );
+                          var b64string = Buffer.from(
+                            await fileData.arrayBuffer()
+                          ).toString("base64");
+                          console.log("====================================");
+
+                          formDataReminder.append("audio2", b64string);
+
                           const soundLevelPrompt = await bot.sendMessage(
                             caregiverChatId,
                             "Choose the sound level to be played:",
@@ -426,7 +513,12 @@ bot.on(`message`, (message) => {
                                         bot.on(`message`, async (deviceMsg) => {
                                           if (deviceFlag == 1) {
                                             deviceFlag = 0;
-                                            reminder.device = deviceMsg.text;
+                                            if (deviceMsg != "None") {
+                                              formDataReminder.append(
+                                                "device",
+                                                deviceMsg.text
+                                              );
+                                            }
                                             const confirmationPrompt =
                                               await bot.sendMessage(
                                                 caregiverChatId,
@@ -440,44 +532,50 @@ bot.on(`message`, (message) => {
                                                   confirmationFlag = 0;
                                                   options.confirmation =
                                                     confirmationMsg.text;
-                                                  //createReminder();
+                                                  //createReminder
                                                   if (repeat == "Only Once") {
-                                                    const formDataAdhoc =
-                                                    new FormData();
-                                                  Object.entries(
-                                                    reminder2
-                                                  ).forEach(([key, value]) => {
-                                                    formDataAdhoc.append(
-                                                      `${key}`,
-                                                      `${value}`
+                                                    formDataReminder.append(
+                                                      "when",
+                                                      reminder.when
                                                     );
-                                                  });
-                                                  formDataAdhoc.append(
-                                                    "options",
-                                                    JSON.stringify(options)
-                                                  );
-                                                  services.createAdHoc(
-                                                    formDataAdhoc
-                                                  );
-                                                  resetFlags();
-                                                  bot.sendMessage(
-                                                    caregiverChatId,
-                                                    "Reminder Created!",
-                                                    standardOpts
-                                                  );
+                                                    formDataReminder.append(
+                                                      "options",
+                                                      JSON.stringify(options)
+                                                    );
+                                                    services.createAdHoc(
+                                                      formDataReminder
+                                                    );
+                                                    bot.sendMessage(
+                                                      caregiverChatId,
+                                                      "Reminder Created!",
+                                                      standardOpts
+                                                    );
                                                   }
-                                                  if (repeat == "Daily" || repeat == "Weekly") {
-                                                    const formDataRegular = new FormData();
+                                                  if (
+                                                    repeat == "Daily" ||
+                                                    repeat == "Weekly"
+                                                  ) {
                                                     if (repeat == "Daily") {
-                                                      formDataRegular.append("day", -1);
+                                                      formDataReminder.append(
+                                                        "day",
+                                                        -1
+                                                      );
                                                     }
                                                     if (repeat == "Weekly") {
-                                                      const repeatdate = new Date(reminder.when);
-                                                      formDataRegular.append("day", repeatdate.getDay());
+                                                      const repeatdate =
+                                                        new Date(reminder.when);
+                                                      formDataReminder.append(
+                                                        "day",
+                                                        repeatdate.getDay()
+                                                      );
                                                     }
-                                                    formDataRegular.append("title", reminder.title);
-                                                    formDataRegular.append("options", JSON.stringify(options));
-                                                    services.createRegular(formDataRegular);
+                                                    formDataReminder.append(
+                                                      "options",
+                                                      JSON.stringify(options)
+                                                    );
+                                                    services.createRegular(
+                                                      formDataRegular
+                                                    );
                                                   }
                                                 }
                                               }
@@ -527,6 +625,7 @@ bot.on(`message`, (message) => {
     })();
   }
   if (message.text == "Settings") {
+    resetSettingsFlags();
     bot.sendMessage(
       caregiverChatId,
       "Which setting do you want to change?",
@@ -551,8 +650,6 @@ bot.on(`message`, (message) => {
             // );
             //console.log(res);
             bot.sendMessage(caregiverChatId, "Settings Updated!", standardOpts);
-            settingsFlag = 1;
-            toothbrushFlag = 1;
           }
         });
       }
